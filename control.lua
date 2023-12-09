@@ -36,6 +36,8 @@ script.on_event(defines.events.on_player_left_game, function(event)
 end)
 
 local function check_monitored_players()
+    local slot_lower_threshold = 0.2
+
     if global.player_info then
         game.print "check_monitored_players"
         for pid, player_info in pairs(global.player_info) do
@@ -52,6 +54,12 @@ local function check_monitored_players()
                 game.print("main_inv slots: sz=" .. #main_inv .. ", free=" .. main_inv.count_empty_stacks())
                 game.print("logistics_inv slots: sz=" .. #logistics_inv .. ", free=" .. logistics_inv.count_empty_stacks())
 
+                local s = settings.get_player_settings(pid)
+                game.print("#settings: " .. #s)
+
+                for s_name, setting in pairs(s) do
+                    game.print("settings: " .. s_name)
+                end
                 local requests = {}
                 for slot_index = 1, p.character.request_slot_count do
                     local slot = p.get_personal_logistic_slot(slot_index)
@@ -60,6 +68,8 @@ local function check_monitored_players()
                     end
                 end
                 game.print("request slots: sz=" .. #requests .. "; " .. p.character.request_slot_count)
+
+                local candidates = {}
 
                 local contents = main_inv.get_contents()
                 for item_name, item_count in pairs(contents) do
@@ -77,7 +87,7 @@ local function check_monitored_players()
                         elseif stack_excess == 0 then
                             status = "perfect-N";
                             show = false
-                        elseif stack_excess > 0 and stack_excess < item.stack_size * 0.2 then
+                        elseif stack_excess > 0 and stack_excess < item.stack_size * slot_lower_threshold then
                             status = "trim=" .. tostring(stack_excess)
                         end
                         if item.place_result then
@@ -87,10 +97,45 @@ local function check_monitored_players()
                             local r = requests[item_name]
                             status = status .. ",req:(min=" .. (r.min or "X") .. ",max=" .. (r.max or "X") .. ")"
                         end
+
+                        -- never remove the last stack, and never go below any logistics request minimum
+                        local min_items_to_keep = item.stack_size
+                        if requests[item_name] then
+                            min_items_to_keep = math.max(min_items_to_keep, requests[item_name].min)
+                        end
+
+                        if item_count > min_items_to_keep
+                                and stack_excess > 0 and stack_excess < item.stack_size * slot_lower_threshold then
+                            candidates[item_name] = { excess = stack_excess, remaining = item_count - stack_excess, item = item }
+                        end
+
                         if show then
-                            game.print(item_name .. "; " .. status .. "/" .. item.stack_size .. ": " .. item_count)
+                            -- game.print(item_name .. "; " .. status .. "/" .. item.stack_size .. ": (" .. item_count .. "), excess=" .. stack_excess)
                         end
                     end
+                end
+
+                -- FIXME: sort candidates as appropriate here
+
+                -- perform the actual transfer from main inventory to trash
+                local count = 0
+                for item_name, item_removal_info in pairs(candidates) do
+                    local items_to_move = main_inv.remove({ name = item_name, count = item_removal_info.excess })
+                    local items_moved = logistics_inv.insert({ name = item_name, count = items_to_move })
+
+                    -- if for some reason not all items were trashed (eg trash full), then attempt to restore them to main_inv
+                    local items_restored
+                    if items_moved < items_to_move then
+                        items_restored = main_inv.insert({ name = item_name, count = items_to_move - items_moved })
+                    else
+                        items_restored = 0
+                    end
+
+                    p.create_local_flying_text { text = { "itrim.notification-flying-text", -items_moved, item_removal_info.item.localised_name, item_removal_info.remaining + items_restored },
+                                                 position = { p.position.x, p.position.y - count * 1 },
+                                                 time_to_live = 180,
+                                                 color = { 128, 128, 192 } }
+                    count = count + 1
                 end
             else
                 deregister_player(pid)
@@ -101,7 +146,10 @@ local function check_monitored_players()
     end
 end
 
-script.on_nth_tick(601, check_monitored_players)
+script.on_nth_tick(613, function(event)
+    check_monitored_players()
+end
+)
 
 script.on_event(defines.events.on_player_main_inventory_changed, function(event)
     register_player(event.player_index)
@@ -112,18 +160,18 @@ end
 --[[
 script.on_event(defines.events.on_player_changed_position,
   function(event)
-    local player = game.get_player(event.player_index) -- get the player that moved            
+    local player = game.get_player(event.player_index) -- get the player that moved
     -- if they're wearing our armor
     if player.character and player.get_inventory(defines.inventory.character_armor).get_item_count("fire-armor") >= 1 then
        -- create the fire where they're standing
-       player.surface.create_entity{name="fire-flame", position=player.position, force="neutral"} 
+       player.surface.create_entity{name="fire-flame", position=player.position, force="neutral"}
     end
   end
 )
 --]]
 
---[[ 
-script.on_event(defines.events.on_tick, function(event) 
-	game.print(event.tick.. ",") 
+--[[
+script.on_event(defines.events.on_tick, function(event)
+	game.print(event.tick.. ",")
 end)
 --]]
