@@ -17,7 +17,6 @@ local function register_player(pid)
     end
 
     global.player_info[pid] = { player = p, calls = 0 }
-    game.print("Registered player: " .. pid)
     return true
 end
 
@@ -25,7 +24,6 @@ end
 -- We'll re-register them if their inventory changes.
 local function deregister_player(pid)
     global.players[pid] = nil
-    game.print("Deregistered player: " .. pid)
 end
 
 script.on_event(defines.events.on_player_joined_game, function(event)
@@ -36,30 +34,28 @@ script.on_event(defines.events.on_player_left_game, function(event)
 end)
 
 local function check_monitored_players()
-    local slot_lower_threshold = 0.2
-
     if global.player_info then
-        game.print "check_monitored_players"
         for pid, player_info in pairs(global.player_info) do
             player_info.calls = player_info.calls + 1
 
             local p = player_info.player
-            game.print("Checking: " .. pid .. " = " .. p.name .. "; calls=" .. player_info.calls .. ", logistics? "
-                    .. tostring(p.character_personal_logistic_requests_enabled))
+            local player_settings = settings.get_player_settings(pid)
+
+            --game.print("Checking: " .. pid .. " = " .. p.name .. "; calls=" .. player_info.calls .. ", logistics? "
+            --        .. tostring(p.character_personal_logistic_requests_enabled) .. "; " .. tostring(player_settings["stack-trimming-threshold"].value))
+
+            local trim_enabled = player_settings["trim-enabled"].value
 
             local main_inv = p.get_main_inventory()
             local logistics_inv = p.get_inventory(defines.inventory.character_trash)
 
-            if main_inv and logistics_inv then
-                game.print("main_inv slots: sz=" .. #main_inv .. ", free=" .. main_inv.count_empty_stacks())
-                game.print("logistics_inv slots: sz=" .. #logistics_inv .. ", free=" .. logistics_inv.count_empty_stacks())
+            if main_inv and logistics_inv and trim_enabled then
+                --game.print("main_inv slots: sz=" .. #main_inv .. ", free=" .. main_inv.count_empty_stacks())
+                --game.print("logistics_inv slots: sz=" .. #logistics_inv .. ", free=" .. logistics_inv.count_empty_stacks())
 
-                local s = settings.get_player_settings(pid)
-                game.print("#settings: " .. #s)
+                local slot_lower_threshold = player_settings["stack-trimming-threshold"].value
+                local notification_flying_text_enabled = player_settings["notification-flying-text-enabled"].value
 
-                for s_name, setting in pairs(s) do
-                    game.print("settings: " .. s_name)
-                end
                 local requests = {}
                 for slot_index = 1, p.character.request_slot_count do
                     local slot = p.get_personal_logistic_slot(slot_index)
@@ -67,7 +63,6 @@ local function check_monitored_players()
                         requests[slot.name] = slot
                     end
                 end
-                game.print("request slots: sz=" .. #requests .. "; " .. p.character.request_slot_count)
 
                 local candidates = {}
 
@@ -131,18 +126,18 @@ local function check_monitored_players()
                         items_restored = 0
                     end
 
-                    p.create_local_flying_text { text = { "itrim.notification-flying-text", -items_moved, item_removal_info.item.localised_name, item_removal_info.remaining + items_restored },
-                                                 position = { p.position.x, p.position.y - count * 1 },
-                                                 time_to_live = 180,
-                                                 color = { 128, 128, 192 } }
+                    if notification_flying_text_enabled then
+                        p.create_local_flying_text { text = { "itrim.notification-flying-text", -items_moved, item_removal_info.item.localised_name, item_removal_info.remaining + items_restored },
+                                                     position = { p.position.x, p.position.y - count * 1 },
+                                                     time_to_live = 180,
+                                                     color = { 128, 128, 192 } }
+                    end
                     count = count + 1
                 end
             else
                 deregister_player(pid)
             end
         end
-    else
-        game.print("global.player_info is null")
     end
 end
 
@@ -153,25 +148,5 @@ end
 
 script.on_event(defines.events.on_player_main_inventory_changed, function(event)
     register_player(event.player_index)
-    game.print("inventory changed: " .. event.player_index)
 end
 )
-
---[[
-script.on_event(defines.events.on_player_changed_position,
-  function(event)
-    local player = game.get_player(event.player_index) -- get the player that moved
-    -- if they're wearing our armor
-    if player.character and player.get_inventory(defines.inventory.character_armor).get_item_count("fire-armor") >= 1 then
-       -- create the fire where they're standing
-       player.surface.create_entity{name="fire-flame", position=player.position, force="neutral"}
-    end
-  end
-)
---]]
-
---[[
-script.on_event(defines.events.on_tick, function(event)
-	game.print(event.tick.. ",")
-end)
---]]
