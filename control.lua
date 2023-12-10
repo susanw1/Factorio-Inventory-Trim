@@ -23,7 +23,7 @@ end
 -- De-registers a player from inventory monitoring. They might have left, or we can't find anything more to do.
 -- We'll re-register them if their inventory changes.
 local function deregister_player(pid)
-    global.players[pid] = nil
+    global.player_info[pid] = nil
 end
 
 script.on_event(defines.events.on_player_joined_game, function(event)
@@ -71,28 +71,7 @@ local function check_monitored_players()
                     local item = game.item_prototypes[item_name]
 
                     local stack_excess = item_count % item.stack_size
-                    local status = "multi-stack"
-                    local show = true
                     if item and item.stackable then
-                        if item_count < item.stack_size then
-                            status = "single-stack"
-                        elseif item_count == item.stack_size then
-                            status = "perfect-1";
-                            show = false
-                        elseif stack_excess == 0 then
-                            status = "perfect-N";
-                            show = false
-                        elseif stack_excess > 0 and stack_excess < item.stack_size * slot_lower_threshold then
-                            status = "trim=" .. tostring(stack_excess)
-                        end
-                        if item.place_result then
-                            status = status .. ",placeable"
-                        end
-                        if requests[item_name] then
-                            local r = requests[item_name]
-                            status = status .. ",req:(min=" .. (r.min or "X") .. ",max=" .. (r.max or "X") .. ")"
-                        end
-
                         -- never remove the last stack, and never go below any logistics request minimum
                         local min_items_to_keep = item.stack_size
                         if requests[item_name] then
@@ -102,10 +81,6 @@ local function check_monitored_players()
                         if item_count > min_items_to_keep
                                 and stack_excess > 0 and stack_excess < item.stack_size * slot_lower_threshold then
                             candidates[item_name] = { excess = stack_excess, remaining = item_count - stack_excess, item = item }
-                        end
-
-                        if show then
-                            -- game.print(item_name .. "; " .. status .. "/" .. item.stack_size .. ": (" .. item_count .. "), excess=" .. stack_excess)
                         end
                     end
                 end
@@ -150,3 +125,28 @@ script.on_event(defines.events.on_player_main_inventory_changed, function(event)
     register_player(event.player_index)
 end
 )
+
+--local status = "multi-stack"
+--local show = true
+--if item_count < item.stack_size then
+--    status = "single-stack"
+--elseif item_count == item.stack_size then
+--    status = "perfect-1";
+--    show = false
+--elseif stack_excess == 0 then
+--    status = "perfect-N";
+--    show = false
+--elseif stack_excess > 0 and stack_excess < item.stack_size * slot_lower_threshold then
+--    status = "trim=" .. tostring(stack_excess)
+--end
+--if item.place_result then
+--    status = status .. ",placeable"
+--end
+--if requests[item_name] then
+--    local r = requests[item_name]
+--    status = status .. ",req:(min=" .. (r.min or "X") .. ",max=" .. (r.max or "X") .. ")"
+--end
+--
+--if show then
+--    -- game.print(item_name .. "; " .. status .. "/" .. item.stack_size .. ": (" .. item_count .. "), excess=" .. stack_excess)
+--end
