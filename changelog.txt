@@ -1,5 +1,14 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.0
+Date: 2023-12-10
+  Major Features:
+    - Inventory trimming works as required
+  Todo:
+    - Additional settings need implementing for more aggressive trims
+    - Tech tree item required
+---------------------------------------------------------------------------------------------------
 Version: 0.0.1
 Date: 2023-12-07
   Todo:
     - Nothing at the moment.
+---------------------------------------------------------------------------------------------------
