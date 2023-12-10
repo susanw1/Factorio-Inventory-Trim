@@ -1,6 +1,14 @@
 
 local settings = {
 	{
+		name = "schedule-period-ticks",
+		type = "int-setting",
+		setting_type = "runtime-global",
+		default_value = 613,
+		minimum_value = 127,
+		order = "a",
+	},
+	{
 		name = "trim-enabled",
 		type = "bool-setting",
 		setting_type = "runtime-per-user",
@@ -38,6 +46,7 @@ local settings = {
 		setting_type = "runtime-per-user",
 		default_value = 10,
 		minimum_value = 0,
+		maximum_value = 40,
 		hidden = true,
 		order = "c1",
 	},
@@ -47,6 +56,7 @@ local settings = {
 		setting_type = "runtime-per-user",
 		default_value = 3,
 		minimum_value = 0,
+		maximum_value = 20,
 		hidden = true,
 		order = "c2",
 	},
@@ -67,6 +77,15 @@ local settings = {
 		maximum_value = 0.4,
 		hidden = true,
 		order = "c4",
+	},
+	{
+		name = "hold-off-time-secs",
+		type = "int-setting",
+		setting_type = "runtime-per-user",
+		default_value = 10,
+		minimum_value = 0,
+		hidden = true,
+		order = "c2",
 	},
 }
 
