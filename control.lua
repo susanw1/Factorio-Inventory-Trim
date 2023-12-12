@@ -198,46 +198,12 @@ local function tidy_stacks(item_stacks)
     end
 end
 
-local function process_player(player_info)
-    local p = player_info.player
-    local player_settings = settings.get_player_settings(p.index)
+local function candidateOrder(t, a, b)
+    return t[a].importance < t[b].importance
+end
 
-    --game.print("Checking: " .. p.index .. " = " .. p.name .. "; calls=" .. player_info.calls .. ", logistics? "
-    --        .. tostring(p.character_personal_logistic_requests_enabled) .. "; " .. tostring(player_settings["stack-trimming-threshold"].value))
-
-    local trim_enabled = player_settings["trim-enabled"].value
-    local main_inv = p.get_main_inventory()
-    local logistics_inv = p.get_inventory(defines.inventory.character_trash)
-
-    if not trim_enabled or not main_inv or not logistics_inv then
-        deregister_player(p.index)
-        return
-    end
-
-    game.print("Trimming inventory...")
-
-    --game.print("main_inv slots: sz=" .. #main_inv .. ", free=" .. main_inv.count_empty_stacks())
-    --game.print("logistics_inv slots: sz=" .. #logistics_inv .. ", free=" .. logistics_inv.count_empty_stacks())
-
-    local main_empty_stacks_count = main_inv.count_empty_stacks();
-    local active_threshold = player_settings["inventory-slots-used-trimming-active-threshold"].value
-    if main_empty_stacks_count >= #main_inv * (1 - active_threshold) then
-        -- inventory is too empty to bother with!
-        deregister_player(p.index)
-        return
-    end
-
+local function determine_candidate_actions(main_inv, item_stacks, player_settings)
     local slot_lower_threshold = player_settings["stack-trimming-threshold"].value
-    local notification_flying_text_enabled = player_settings["notification-flying-text-enabled"].value
-
-    -- load the personal logistic request setup
-    local requests = find_player_logistic_requests(p)
-
-    -- Gather main-inventory info, mapped by item-name.
-    local item_stacks = gather_inventory_details_by_item(main_inv, requests);
-    tidy_stacks(item_stacks)
-
-    local Priority = { LEVEL_0_ }
 
     local candidates = {}
     for item_name, details in pairs(item_stacks) do
@@ -249,57 +215,140 @@ local function process_player(player_info)
         if request_stacks_count > min_stacks_to_keep then
             min_stacks_to_keep = request_stacks_count
         end
+        local current_inventory_item_count = main_inv.get_item_count(item.name)
 
-        -- scan all slots, assigning candidates for clearing, with Priorities. Priority 0 means highest priority for trimming (or lowest for keeping!).
+        -- scan all slots (from the right), assigning candidates for clearing, with Priorities. Importance 0 means lowest importance for *keeping*, ie trim it more enthusiastically.
         local this_item_candidates = {}
-        for i, _ in pairs(details.unhealthy_slots) do
-            if not details.filter_slots[i] then
-                -- small unhealthy stack with no filter - priority 0
+
+        for i, _ in reversePairs(details.unhealthy_slots) do
+            -- need to make sure that removing *unhealthy* items doesn't push us below the req_min, otherwise drones just re-deliver them!
+            if not details.filter_slots[i] and (not details.req_min or current_inventory_item_count - details.stacks_by_index[i].count >= details.req_min) then
+                -- small unhealthy stack with no filter - importance 0
                 if details.stacks_by_index[i].count < item.stack_size * slot_lower_threshold then
-                    candidates[#candidates + 1] = { item_name = item_name, item = item, priority = 0, slot_index = i, stack_to_move = details.stacks_by_index[i] }
+                    this_item_candidates[#this_item_candidates + 1] = { item_name = item_name, item = item, importance = 0, slot_index = i, stack_to_move = details.stacks_by_index[i] }
                 end
-                -- large unhealthy not-quite-full stack with no filter - priority 3
-                if details.stacks_by_index[i].count < item.stack_size then
-                    candidates[#candidates + 1] = { item_name = item_name, item = item, priority = 3, slot_index = i, stack_to_move = details.stacks_by_index[i] }
-                end
+                -- large unhealthy stack - importance 5
+                this_item_candidates[#this_item_candidates + 1] = { item_name = item_name, item = item, importance = 5, slot_index = i, stack_to_move = details.stacks_by_index[i] }
             end
         end
-        for i, _ in pairs(details.healthy_slots) do
-            if not details.filter_slots[i] and details.stacks_by_index[i].count < item.stack_size * slot_lower_threshold then
-                -- small healthy stack with no filter - priority 1
-                candidates[#candidates + 1] = { item_name = item_name, item = item, priority = 1, slot_index = i, stack_to_move = details.stacks_by_index[i] }
+
+        -- ensures slots to the right have less importance than ones to the left, and item-types share the load of being trimmed
+        local importanceEscalator = 0
+        -- placeable items are more important than non-placeable, and raw materials and intermediates are less important
+        local subgroupBias = ((item.subgroup.name == "intermediate-product" or item.subgroup.name == "raw-material") and 0 or 2)
+                + (item.place_result and 2 or 0)
+                + (details.req_min and 0 or 2)
+
+        for i, _ in reversePairs(details.healthy_slots) do
+            if not details.filter_slots[i] then
+                local importanceGrade
+                if details.stacks_by_index[i].count < item.stack_size * slot_lower_threshold then
+                    -- small healthy stack with no filter - importance 1
+                    importanceGrade = 1 + subgroupBias
+                else
+                    -- any large healthy stack only gets cleared if other options have failed - importance 5+
+                    -- logistic request implies player has expressed intent to maintain minimum, so less important to have excess. Min itself captured by min_stacks_to_keep.
+                    importanceGrade = 6 + importanceEscalator
+                            + subgroupBias
+                end
+
+                this_item_candidates[#this_item_candidates + 1] = { item_name = item_name, item = item, importance = importanceGrade, slot_index = i, stack_to_move = details.stacks_by_index[i] }
+                importanceEscalator = importanceEscalator + 1
+            end
+        end
+
+        -- Append our (trimmed) candidates into the full list, limited to retain the min_stacks_to_keep
+        local max_stacks_to_clear = details.healthy_slot_count + details.unhealthy_slot_count - min_stacks_to_keep
+        local seen_already = {} -- only need one candidate per unique slot, it can only be trimmed once
+        local slot_count = 0
+        for i, c in sortPairs(this_item_candidates, candidateOrder) do
+            if not seen_already[c.slot_index] and slot_count < max_stacks_to_clear then
+                candidates[#candidates + 1] = c
+                seen_already[c.slot_index] = true
+                slot_count = slot_count + 1
             end
         end
     end
+    return candidates
+end
 
-    -- FIXME: sort candidates as appropriate here
+local function process_player(player_info)
+    local p = player_info.player
+    local player_settings = settings.get_player_settings(p.index)
 
+    --game.print("Checking: " .. p.index .. " = " .. p.name .. "; calls=" .. player_info.calls .. ", logistics? "
+    --        .. tostring(p.character_personal_logistic_requests_enabled) .. "; " .. tostring(player_settings["stack-trimming-threshold"].value))
 
-    -- perform the actual transfer from main inventory to trash
+    local main_inv = p.get_main_inventory()
+    local logistics_inv = p.get_inventory(defines.inventory.character_trash)
+
+    if not main_inv or not logistics_inv then
+        deregister_player(p.index)
+        return
+    end
+
+    if not player_settings["trim-enabled"].value or not p.character_personal_logistic_requests_enabled then
+        -- don't deregister player though - we want to trim when we're reactivated
+        return
+    end
+
+    game.print("Trimming inventory...")
+
+    local main_empty_stacks_count = main_inv.count_empty_stacks();
+    local active_threshold = player_settings["inventory-slots-used-trimming-active-threshold"].value
+    if main_empty_stacks_count >= #main_inv * (1 - active_threshold) then
+        -- inventory is too empty to need trimming
+        deregister_player(p.index)
+        return
+    end
+
+    local notification_flying_text_enabled = player_settings["notification-flying-text-enabled"].value
+
+    -- load the personal logistic request setup
+    local requests = find_player_logistic_requests(p)
+
+    -- Gather main-inventory info, mapped by item-name.
+    local item_stacks = gather_inventory_details_by_item(main_inv, requests);
+    tidy_stacks(item_stacks)
+
+    local candidates = determine_candidate_actions(main_inv, item_stacks, player_settings)
+
+    local slot_keep_free_count = player_settings["inventory-slots-keep-free"].value
+    local slot_keep_free_aggressively_count = player_settings["inventory-slots-aggressively-keep-free"].value
+
+    -- perform the actual transfer from main inventory to trash, by iterating the removal candidates in increasing importance order
     local summaries = {}
+    local free_slot_count = main_inv.count_empty_stacks()
 
-    for _, removal_candidate in sortPairs(candidates, function(t, a, b)
-        return t[a].priority < t[b].priority
-    end) do
-        if removal_candidate.priority <= 2 then
-            local free_logistics_slot = logistics_inv.find_empty_stack() or logistics_inv.find_item_stack(removal_candidate.item_name)
-            if free_logistics_slot then
-                local s = removal_candidate.stack_to_move
-                local initial_item_count = s.count
+    for _, removal_candidate in sortPairs(candidates, candidateOrder) do
+        if free_slot_count >= slot_keep_free_count then
+            -- lots of free slots - just do gentle trim
+            aggressiveness_importance_threshold = 5
+        elseif free_slot_count >= slot_keep_free_aggressively_count then
+            -- we're into the free slot warning zone
+            aggressiveness_importance_threshold = 10
+        else
+            -- do everything. Being nice didn't work.
+            aggressiveness_importance_threshold = 10000
+        end
 
-                -- note, on complete transfer, removal_candidate.stack_to_move is no longer valid_for_read
-                local stack_emptied = free_logistics_slot.transfer_stack(s)
-                game.print("Items moved: priority=" .. removal_candidate.priority .. " tried=" .. s.count .. " " .. removal_candidate.item.name ..
-                        "; moved all?=" .. tostring(stack_emptied) .. " valid_for_read? " .. tostring(s.valid_for_read))
-
-                summary = summaries[removal_candidate.item_name] or { item_name = removal_candidate.item_name,
-                                                                      item = removal_candidate.item,
-                                                                      removed_item_count = 0,
-                                                                      stacks_cleared_count = 0 }
-                summary.removed_item_count = summary.removed_item_count + initial_item_count - (s.valid_for_read and s.count or 0)
-                summary.stacks_cleared_count = summary.stacks_cleared_count + (stack_emptied and 1 or 0)
-                summaries[removal_candidate.item_name] = summary
+        if removal_candidate.importance < aggressiveness_importance_threshold then
+            local s = removal_candidate.stack_to_move
+            local items_moved = logistics_inv.insert(s)
+            if items_moved == s.count then
+                s.clear()
+                free_slot_count = free_slot_count + 1
+            else
+                s.count = s.count - items_moved
             end
+
+            summary = summaries[removal_candidate.item_name] or { item_name = removal_candidate.item_name,
+                                                                  item = removal_candidate.item,
+                                                                  removed_item_count = 0,
+                                                                  stacks_cleared_count = 0 }
+            summary.removed_item_count = summary.removed_item_count + items_moved
+            summary.stacks_cleared_count = summary.stacks_cleared_count + (s.valid_for_read and 1 or 0)
+            summaries[removal_candidate.item_name] = summary
         end
     end
 
@@ -308,7 +357,7 @@ local function process_player(player_info)
         for _, summary in pairs(summaries) do
             if summary.removed_item_count > 0 then
                 p.create_local_flying_text { text = { "itrim.notification-flying-text", -summary.removed_item_count, summary.item.localised_name, main_inv.get_item_count(summary.item_name) },
-                                             position = { p.position.x, p.position.y - count/2 },
+                                             position = { p.position.x, p.position.y - count / 2 },
                                              time_to_live = 180,
                                              speed = 1,
                                              color = { 128, 128, 192 } }
@@ -316,41 +365,6 @@ local function process_player(player_info)
             end
         end
     end
-
-    --local items_to_move = main_inv.remove(item_removal_info.stack)
-    --local items_moved = logistics_inv.insert({ name = item_removal_info.item_name, count = items_to_move, health = item_removal_info.stack.health})
-    ------ if for some reason not all items were trashed (eg trash full), then attempt to restore them to main_inv
-    --local items_restored
-    --if items_moved < items_to_move then
-    --    items_restored = main_inv.insert({ name = item_removal_info.item_name, count = items_to_move - items_moved, item_removal_info.stack.health })
-    --else
-    --    items_restored = 0
-    --end
-    --
-    --if notification_flying_text_enabled then
-    --    p.create_local_flying_text { text = { "itrim.notification-flying-text", -items_moved, item_removal_info.stack.item.localised_name, item_removal_info.remaining + items_restored },
-    --                                 position = { p.position.x, p.position.y - count * 1 },
-    --                                 time_to_live = 180,
-    --                                 color = { 128, 128, 192 } }
-    --end
-
-    --local items_to_move = main_inv.remove({ name = item_name, count = item_removal_info.excess })
-    --local items_moved = logistics_inv.insert({ name = item_name, count = items_to_move })
-    --
-    ---- if for some reason not all items were trashed (eg trash full), then attempt to restore them to main_inv
-    --local items_restored
-    --if items_moved < items_to_move then
-    --    items_restored = main_inv.insert({ name = item_name, count = items_to_move - items_moved })
-    --else
-    --    items_restored = 0
-    --end
-    --
-    --if notification_flying_text_enabled then
-    --    p.create_local_flying_text { text = { "itrim.notification-flying-text", -items_moved, item_removal_info.item.localised_name, item_removal_info.remaining + items_restored },
-    --                                 position = { p.position.x, p.position.y - count * 1 },
-    --                                 time_to_live = 180,
-    --                                 color = { 128, 128, 192 } }
-    --end
 end
 
 local function check_monitored_players()
@@ -381,30 +395,3 @@ end)
 script.on_nth_tick(613, function(event)
     check_monitored_players()
 end)
-
-
-
---local status = "multi-stack"
---local show = true
---if item_count < item.stack_size then
---    status = "single-stack"
---elseif item_count == item.stack_size then
---    status = "perfect-1";
---    show = false
---elseif stack_excess == 0 then
---    status = "perfect-N";
---    show = false
---elseif stack_excess > 0 and stack_excess < item.stack_size * slot_lower_threshold then
---    status = "trim=" .. tostring(stack_excess)
---end
---if item.place_result then
---    status = status .. ",placeable"
---end
---if requests[item_name] then
---    local r = requests[item_name]
---    status = status .. ",req:(min=" .. (r.min or "X") .. ",max=" .. (r.max or "X") .. ")"
---end
---
---if show then
---    -- game.print(item_name .. "; " .. status .. "/" .. item.stack_size .. ": (" .. item_count .. "), excess=" .. stack_excess)
---end
