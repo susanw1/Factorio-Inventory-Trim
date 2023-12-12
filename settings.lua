@@ -47,7 +47,6 @@ local settings = {
 		default_value = 10,
 		minimum_value = 0,
 		maximum_value = 40,
-		hidden = true,
 		order = "c1",
 	},
 	{
@@ -57,7 +56,6 @@ local settings = {
 		default_value = 3,
 		minimum_value = 0,
 		maximum_value = 20,
-		hidden = true,
 		order = "c2",
 	},
 	{
