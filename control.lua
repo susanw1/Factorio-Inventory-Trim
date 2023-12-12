@@ -292,7 +292,7 @@ local function process_player(player_info)
         return
     end
 
-    game.print("Trimming inventory...")
+    --game.print("Trimming inventory...")
 
     local main_empty_stacks_count = main_inv.count_empty_stacks();
     local active_threshold = player_settings["inventory-slots-used-trimming-active-threshold"].value
@@ -392,6 +392,15 @@ script.on_event(defines.events.on_player_main_inventory_changed, function(event)
     register_player(event.player_index)
 end)
 
-script.on_nth_tick(613, function(event)
-    check_monitored_players()
+script.on_event(defines.events.on_research_finished, function(event)
+    if event.research.name == "inventory-trim-tech" then
+        local schedule_period_ticks = settings.global["schedule-period-ticks"].value
+        script.on_nth_tick(schedule_period_ticks, function(event)
+            for _, p in pairs(game.players) do
+                register_player(p.index)
+            end
+            check_monitored_players()
+        end)
+        game.print({ "itrim.schedule_period_ticks_changed", math.floor(schedule_period_ticks / 60) })
+    end
 end)
