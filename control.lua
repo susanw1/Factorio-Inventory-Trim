@@ -398,9 +398,10 @@ script.on_event(defines.events.on_player_main_inventory_changed, function(event)
 end)
 
 script.on_event(defines.events.on_research_finished, function(event)
-    if event.research.name == "inventory-trim-tech" then
+    if event.research.name == "inventory-trim-tech"
+            or (not settings.startup["technology-item-required"].value and event.research.name == "logistic-robotics") then
         local schedule_period_ticks = settings.global["schedule-period-ticks"].value
-        script.on_nth_tick(schedule_period_ticks, function(event)
+        script.on_nth_tick(schedule_period_ticks, function(tickEvent)
             for _, p in pairs(game.players) do
                 register_player(p.index)
             end

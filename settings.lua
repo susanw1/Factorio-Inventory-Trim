@@ -1,6 +1,13 @@
 
 local settings = {
 	{
+		name = "technology-item-required",
+		type = "bool-setting",
+		setting_type = "startup",
+		default_value = true,
+		order = "a",
+	},
+	{
 		name = "schedule-period-ticks",
 		type = "int-setting",
 		setting_type = "runtime-global",
