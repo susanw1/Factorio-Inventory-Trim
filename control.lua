@@ -205,21 +205,35 @@ end
 local function determine_candidate_actions(main_inv, item_stacks, player_settings)
     local slot_lower_threshold = player_settings["stack-trimming-threshold"].value
 
+    -- determine some updated stats: the abs min number of slots required, and the current number of slots above that ("excess" - these can reasonably be trimmed).
+    -- plus, find the largest excess because high excessive slots are less important.
+    local largest_excess_slots = 0
+    for item_name, details in pairs(item_stacks) do
+        -- no point in clearing slots with filters, or going below the request minimum, as it won't make more slots available.
+        local min_stacks_to_keep = math.max(details.filter_slot_count, 1)
+        local request_stacks_count = math.ceil((details.req_min or 0) / details.item.stack_size)
+        if request_stacks_count > min_stacks_to_keep then
+            min_stacks_to_keep = request_stacks_count
+        end
+        details.min_stacks_to_keep = min_stacks_to_keep
+
+        local excess_slots = details.healthy_slot_count + details.unhealthy_slot_count - min_stacks_to_keep
+        if excess_slots > largest_excess_slots then
+            largest_excess_slots = excess_slots
+        end
+        details.excess_slots = excess_slots
+    end
+
     local candidates = {}
     for item_name, details in pairs(item_stacks) do
         local item = details.item
 
-        -- no point in clearing slots with filters, or going below the request minimum, as it won't make more slots available.
-        local min_stacks_to_keep = details.filter_slot_count
-        local request_stacks_count = math.ceil((details.req_min or 0) / item.stack_size)
-        if request_stacks_count > min_stacks_to_keep then
-            min_stacks_to_keep = request_stacks_count
-        end
         local current_inventory_item_count = main_inv.get_item_count(item.name)
 
-        -- scan all slots (from the right), assigning candidates for clearing, with Priorities. Importance 0 means lowest importance for *keeping*, ie trim it more enthusiastically.
+        -- scan all slots (from the right), assigning candidates for clearing, with "Importance". Importance 0 means lowest importance for *keeping*, ie trim it more enthusiastically.
         local this_item_candidates = {}
 
+        -- handle unhealthy slots separately from healthy ones, they have much lower importance
         for i, _ in reversePairs(details.unhealthy_slots) do
             -- need to make sure that removing *unhealthy* items doesn't push us below the req_min, otherwise drones just re-deliver them!
             if not details.filter_slots[i] and (not details.req_min or current_inventory_item_count - details.stacks_by_index[i].count >= details.req_min) then
@@ -227,16 +241,18 @@ local function determine_candidate_actions(main_inv, item_stacks, player_setting
                 if details.stacks_by_index[i].count < item.stack_size * slot_lower_threshold then
                     this_item_candidates[#this_item_candidates + 1] = { item_name = item_name, item = item, importance = 0, slot_index = i, stack_to_move = details.stacks_by_index[i] }
                 end
-                -- large unhealthy stack - importance 5
+                -- large unhealthy stack - importance 4
                 this_item_candidates[#this_item_candidates + 1] = { item_name = item_name, item = item, importance = 5, slot_index = i, stack_to_move = details.stacks_by_index[i] }
             end
         end
 
         -- ensures slots to the right have less importance than ones to the left, and item-types share the load of being trimmed
-        local importanceEscalator = 0
-        -- placeable items are more important than non-placeable, and raw materials and intermediates are less important
+        local importanceEscalator = largest_excess_slots - details.excess_slots
+
+        -- placeable items are more important than non-placeable, and raw materials and intermediates are much less important
+        -- and logistic req_min implies player has expressed intent to maintain minimum, so less important to have excess. Min itself captured by min_stacks_to_keep.
         local subgroupBias = ((item.subgroup.name == "intermediate-product" or item.subgroup.name == "raw-material") and 0 or 2)
-                + (item.place_result and 2 or 0)
+                + (item.place_result and 1 or 0)
                 + (details.req_min and 0 or 2)
 
         for i, _ in reversePairs(details.healthy_slots) do
@@ -247,8 +263,7 @@ local function determine_candidate_actions(main_inv, item_stacks, player_setting
                     importanceGrade = 1 + subgroupBias
                 else
                     -- any large healthy stack only gets cleared if other options have failed - importance 5+
-                    -- logistic request implies player has expressed intent to maintain minimum, so less important to have excess. Min itself captured by min_stacks_to_keep.
-                    importanceGrade = 6 + importanceEscalator
+                    importanceGrade = 5 + importanceEscalator
                             + subgroupBias
                 end
 
@@ -257,8 +272,8 @@ local function determine_candidate_actions(main_inv, item_stacks, player_setting
             end
         end
 
-        -- Append our (trimmed) candidates into the full list, limited to retain the min_stacks_to_keep
-        local max_stacks_to_clear = details.healthy_slot_count + details.unhealthy_slot_count - min_stacks_to_keep
+        -- Append our candidates into the full list, trimmed to retain the min_stacks_to_keep, so only clear the excess.
+        local max_stacks_to_clear = details.excess_slots
         local seen_already = {} -- only need one candidate per unique slot, it can only be trimmed once
         local slot_count = 0
         for i, c in sortPairs(this_item_candidates, candidateOrder) do
@@ -275,9 +290,6 @@ end
 local function process_player(player_info)
     local p = player_info.player
     local player_settings = settings.get_player_settings(p.index)
-
-    --game.print("Checking: " .. p.index .. " = " .. p.name .. "; calls=" .. player_info.calls .. ", logistics? "
-    --        .. tostring(p.character_personal_logistic_requests_enabled) .. "; " .. tostring(player_settings["stack-trimming-threshold"].value))
 
     local main_inv = p.get_main_inventory()
     local logistics_inv = p.get_inventory(defines.inventory.character_trash)
