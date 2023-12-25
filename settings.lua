@@ -16,12 +16,12 @@ local settings = {
 		order = "a",
 	},
 	{
-		name = "stack-trimming-threshold",
+		name = "stack-fullness-importance-boost",
 		type = "double-setting",
 		setting_type = "runtime-per-user",
-		default_value = 0.2,
+		default_value = 1.0,
 		minimum_value = 0,
-		maximum_value = 1,
+		maximum_value = 3,
 		order = "b1",
 	},
 	{
@@ -59,14 +59,7 @@ local settings = {
 		order = "c2",
 	},
 	{
-		name = "trim-unhealthy-items-first",
-		type = "bool-setting",
-		setting_type = "runtime-per-user",
-		default_value = true,
-		hidden = true,
-		order = "c3",
-	},
-	{
+		-- not implemented yet.
 		name = "pickup-margin",
 		type = "double-setting",
 		setting_type = "runtime-per-user",
@@ -77,6 +70,7 @@ local settings = {
 		order = "c4",
 	},
 	{
+		-- not implemented - requires memory from previous passes, hmm.
 		name = "hold-off-time-secs",
 		type = "int-setting",
 		setting_type = "runtime-per-user",

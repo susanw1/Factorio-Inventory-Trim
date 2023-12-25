@@ -203,7 +203,7 @@ local function candidateOrder(t, a, b)
 end
 
 local function determine_candidate_actions(main_inv, item_stacks, player_settings)
-    local slot_lower_threshold = player_settings["stack-trimming-threshold"].value
+    local stack_fullness_importance_boost = player_settings["stack-fullness-importance-boost"].value
 
     -- determine some updated stats: the abs min number of slots required, and the current number of slots above that ("excess" - these can reasonably be trimmed).
     -- plus, find the largest excess because high excessive slots are less important.
@@ -235,12 +235,11 @@ local function determine_candidate_actions(main_inv, item_stacks, player_setting
         for i, _ in reversePairs(details.unhealthy_slots) do
             -- need to make sure that removing *unhealthy* items doesn't push us below the req_min, otherwise drones just re-deliver them!
             if not details.filter_slots[i] and (not details.req_min or current_inventory_item_count - details.stacks_by_index[i].count >= details.req_min) then
-                -- small unhealthy stack with no filter - importance 0
-                if details.stacks_by_index[i].count < item.stack_size * slot_lower_threshold then
-                    this_item_candidates[#this_item_candidates + 1] = { item_name = item_name, item = item, importance = 0, slot_index = i, stack_to_move = details.stacks_by_index[i] }
-                end
-                -- large unhealthy stack - importance 4
-                this_item_candidates[#this_item_candidates + 1] = { item_name = item_name, item = item, importance = 5, slot_index = i, stack_to_move = details.stacks_by_index[i] }
+                this_item_candidates[#this_item_candidates + 1] = { item_name = item_name,
+                                                                    item = item,
+                                                                    importance = 4 * details.stacks_by_index[i].count / item.stack_size * stack_fullness_importance_boost,
+                                                                    slot_index = i,
+                                                                    stack_to_move = details.stacks_by_index[i] }
             end
         end
 
@@ -255,17 +254,13 @@ local function determine_candidate_actions(main_inv, item_stacks, player_setting
 
         for i, _ in reversePairs(details.healthy_slots) do
             if not details.filter_slots[i] then
-                local importanceGrade
-                if details.stacks_by_index[i].count < item.stack_size * slot_lower_threshold then
-                    -- small healthy stack with no filter - importance 1
-                    importanceGrade = 1 + subgroupBias
-                else
-                    -- any large healthy stack only gets cleared if other options have failed - importance 5+
-                    importanceGrade = 5 + importanceEscalator
-                            + subgroupBias
-                end
+                local importanceGrade = subgroupBias + importanceEscalator + (4 * details.stacks_by_index[i].count / item.stack_size * stack_fullness_importance_boost)
 
-                this_item_candidates[#this_item_candidates + 1] = { item_name = item_name, item = item, importance = importanceGrade, slot_index = i, stack_to_move = details.stacks_by_index[i] }
+                this_item_candidates[#this_item_candidates + 1] = { item_name = item_name,
+                                                                    item = item,
+                                                                    importance = importanceGrade,
+                                                                    slot_index = i,
+                                                                    stack_to_move = details.stacks_by_index[i] }
                 importanceEscalator = importanceEscalator + 1
             end
         end
