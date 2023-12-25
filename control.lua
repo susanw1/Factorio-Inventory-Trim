@@ -210,14 +210,12 @@ local function determine_candidate_actions(main_inv, item_stacks, player_setting
     local largest_excess_slots = 0
     for item_name, details in pairs(item_stacks) do
         -- no point in clearing slots with filters, or going below the request minimum, as it won't make more slots available.
-        local min_stacks_to_keep = math.max(details.filter_slot_count, 1)
-        local request_stacks_count = math.ceil((details.req_min or 0) / details.item.stack_size)
-        if request_stacks_count > min_stacks_to_keep then
-            min_stacks_to_keep = request_stacks_count
-        end
-        details.min_stacks_to_keep = min_stacks_to_keep
+        details.min_stacks_to_keep = math.max(details.filter_slot_count,
+                math.ceil((details.req_min or 0) / details.item.stack_size), -- min stacks needed for req_min
+                (details.req_min and details.req_min == 0 and 0) or 1 -- bare minimum: use "req_min explicitly set to zero" to mean "allow trimming last slot"
+        )
 
-        local excess_slots = details.healthy_slot_count + details.unhealthy_slot_count - min_stacks_to_keep
+        local excess_slots = details.healthy_slot_count + details.unhealthy_slot_count - details.min_stacks_to_keep
         if excess_slots > largest_excess_slots then
             largest_excess_slots = excess_slots
         end
