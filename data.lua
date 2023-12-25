@@ -1,7 +1,6 @@
 --data.lua
 
-data:extend({
-
+local tech = {
     {
         name = 'inventory-trim-tech',
         type = 'technology',
@@ -27,5 +26,8 @@ data:extend({
             time = 20,
         },
     },
+}
 
-})
+if settings.startup["technology-item-required"].value then
+    data:extend(tech)
+end
