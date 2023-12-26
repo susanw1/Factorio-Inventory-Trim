@@ -3,6 +3,13 @@
 -- registers a new player for inventory monitoring, if player a) not already registered, b) exists, c) is a character, d) has a main inventory.
 -- @returns true if player added; false otherwise
 local function register_player(player_index)
+    if not global.player_info then
+        global.player_info = {}
+    end
+    if not global.forces_researched then
+        global.forces_researched = {}
+    end
+
     if global.player_info[player_index] then
         return false        -- already registered
     end
@@ -11,6 +18,12 @@ local function register_player(player_index)
     if not (p and p.character and p.get_main_inventory()) then
         return false        -- invalid candidate for trimming
     end
+
+    if not global.forces_researched[p.force.index] then
+        return false
+    end
+
+    p.print({ "itrim.schedule_period_ticks_changed", math.floor(settings.global["schedule-period-ticks"].value / 60) })
 
     global.player_info[player_index] = { player = p, calls = 0 }
     return true
@@ -383,6 +396,7 @@ end
 
 script.on_init(function()
     global.player_info = {}
+    global.forces_researched = {}
 end)
 
 script.on_event(defines.events.on_player_joined_game, function(event)
@@ -397,16 +411,26 @@ script.on_event(defines.events.on_player_main_inventory_changed, function(event)
     register_player(event.player_index)
 end)
 
+local function schedule_scanning()
+    local schedule_period_ticks = settings.global["schedule-period-ticks"].value
+    script.on_nth_tick(schedule_period_ticks, function(tickEvent)
+        for _, p in pairs(game.players) do
+            register_player(p.index)
+        end
+        check_monitored_players()
+    end)
+end
+
+script.on_event(defines.events.on_runtime_mod_setting_changed, function(event)
+    if event.setting == "schedule-period-ticks" then
+        schedule_scanning()
+    end
+end)
+
 script.on_event(defines.events.on_research_finished, function(event)
     if event.research.name == "inventory-trim-tech"
             or (not settings.startup["technology-item-required"].value and event.research.name == "logistic-robotics") then
-        local schedule_period_ticks = settings.global["schedule-period-ticks"].value
-        script.on_nth_tick(schedule_period_ticks, function(tickEvent)
-            for _, p in pairs(game.players) do
-                register_player(p.index)
-            end
-            check_monitored_players()
-        end)
-        game.print({ "itrim.schedule_period_ticks_changed", math.floor(schedule_period_ticks / 60) })
+        global.forces_researched[event.research.force.index] = true
+        schedule_scanning()
     end
 end)
