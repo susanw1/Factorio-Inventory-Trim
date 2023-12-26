@@ -15,15 +15,13 @@ local function register_player(player_index)
     end
 
     local p = game.get_player(player_index)
-    if not (p and p.character and p.get_main_inventory()) then
+    if not (p and p.character and p.get_main_inventory() and p.get_inventory(defines.inventory.character_trash)) then
         return false        -- invalid candidate for trimming
     end
 
     if not global.forces_researched[p.force.index] then
-        return false
+        return false        -- player's force hasn't researched relevant techs
     end
-
-    p.print({ "itrim.schedule_period_ticks_changed", math.floor(settings.global["schedule-period-ticks"].value / 60) })
 
     global.player_info[player_index] = { player = p, calls = 0 }
     return true
@@ -306,7 +304,6 @@ local function process_player(player_info)
     end
 
     if not player_settings["trim-enabled"].value or not p.character_personal_logistic_requests_enabled then
-        -- don't deregister player though - we want to trim when we're reactivated
         return
     end
 
@@ -316,7 +313,6 @@ local function process_player(player_info)
     local active_threshold = player_settings["inventory-slots-used-trimming-active-threshold"].value
     if main_empty_stacks_count >= #main_inv * (1 - active_threshold) then
         -- inventory is too empty to need trimming
-        deregister_player(p.index)
         return
     end
 
@@ -387,7 +383,7 @@ end
 
 local function check_monitored_players()
     if global.player_info then
-        for player_index, player_info in pairs(global.player_info) do
+        for _, player_info in pairs(global.player_info) do
             player_info.calls = player_info.calls + 1
             process_player(player_info)
         end
@@ -411,19 +407,28 @@ script.on_event(defines.events.on_player_main_inventory_changed, function(event)
     register_player(event.player_index)
 end)
 
+local function show_trim_start_alert(player)
+    player.print({ "itrim.schedule_period_ticks_changed", math.floor(settings.global["schedule-period-ticks"].value / 60) })
+end
+
 local function schedule_scanning()
     local schedule_period_ticks = settings.global["schedule-period-ticks"].value
     script.on_nth_tick(schedule_period_ticks, function(tickEvent)
-        for _, p in pairs(game.players) do
-            register_player(p.index)
-        end
         check_monitored_players()
     end)
+
+    for _, p in pairs(game.players) do
+        register_player(p.index)
+    end
 end
 
 script.on_event(defines.events.on_runtime_mod_setting_changed, function(event)
     if event.setting == "schedule-period-ticks" then
         schedule_scanning()
+
+        for _, player_info in pairs(global.player_info) do
+            show_trim_start_alert(player_info.player)
+        end
     end
 end)
 
@@ -432,5 +437,8 @@ script.on_event(defines.events.on_research_finished, function(event)
             or (not settings.startup["technology-item-required"].value and event.research.name == "logistic-robotics") then
         global.forces_researched[event.research.force.index] = true
         schedule_scanning()
+        for _, player in pairs(event.research.force.players) do
+            show_trim_start_alert(player)
+        end
     end
 end)
