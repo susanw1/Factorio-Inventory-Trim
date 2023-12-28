@@ -1,6 +1,6 @@
 {
   "name": "Inventory-Trim",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "title": "Inventory Trim",
   "author": "SusanW",
   "license": "MIT",
@@ -8,5 +8,5 @@
   "dependencies": [
     "base >= 1.1"
   ],
-  "description": "Excess items in the character inventory get moved to the logistics trash, to keep inventory slots free."
+  "description": "Trims away low-value stacks from the main inventory into the logistics trash to keep inventory slots free."
 }

@@ -307,8 +307,6 @@ local function process_player(player_info)
         return
     end
 
-    --game.print("Trimming inventory...")
-
     local main_empty_stacks_count = main_inv.count_empty_stacks();
     local active_threshold = player_settings["inventory-slots-used-trimming-active-threshold"].value
     if main_empty_stacks_count >= #main_inv * (1 - active_threshold) then

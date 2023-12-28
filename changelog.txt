@@ -1,15 +1,22 @@
 ---------------------------------------------------------------------------------------------------
-Version: 0.1.0
+Version: 0.1.1
 Date: 2023-12-26
   Major Features:
     - Inventory trimming works as planned
     - Inventory capacity threshold settings
-    - Player force handling 
-    - Technology tree item (with disable startup setting)
+    - Player force handling
+    - Technology tree item (with startup setting)
     - Scan-rate setting
+---------------------------------------------------------------------------------------------------
+Version: 0.1.0
+Date: 2023-12-10
+  Major Features:
+    - Basic inventory trimming works
+  Todo:
+    - Additional settings need implementing for more aggressive trims
+    - Tech tree item required
 ---------------------------------------------------------------------------------------------------
 Version: 0.0.1
 Date: 2023-12-07
   Todo:
-    - Nothing at the moment.
----------------------------------------------------------------------------------------------------
+    - Everything, at the moment.
