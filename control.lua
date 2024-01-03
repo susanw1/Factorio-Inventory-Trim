@@ -23,7 +23,7 @@ local function register_player(player_index)
         return false        -- player's force hasn't researched relevant techs
     end
 
-    global.player_info[player_index] = { player = p, calls = 0 }
+    global.player_info[player_index] = { player = p }
     return true
 end
 
@@ -60,10 +60,6 @@ local function gather_inventory_details_by_item(main_inv, requests)
             else
                 item_name = filter
                 item_count = 0
-            end
-
-            if slot_index % 2 == 0 then
-                --game.print("main_inv slot[" .. slot_index .. "] has item_name=" .. item_name .. "(" .. item_count .. ")/h=" .. (stack.valid_for_read and stack.health or "-") .. " (filter=" .. tostring(filter) .. ")")
             end
 
             local item = game.item_prototypes[item_name]
@@ -382,7 +378,6 @@ end
 local function check_monitored_players()
     if global.player_info then
         for _, player_info in pairs(global.player_info) do
-            player_info.calls = player_info.calls + 1
             process_player(player_info)
         end
     end
@@ -409,15 +404,24 @@ local function show_trim_start_alert(player)
     player.print({ "itrim.schedule_period_ticks_changed", math.floor(settings.global["schedule-period-ticks"].value / 60) })
 end
 
+script.on_nth_tick(settings.global["schedule-period-ticks"].value, function(tickEvent)
+    check_monitored_players()
+    if not global.schedule_period_ticks then
+        global.schedule_period_ticks = settings.global["schedule-period-ticks"].value
+    end
+end)
+
 local function schedule_scanning()
-    local schedule_period_ticks = settings.global["schedule-period-ticks"].value
-    script.on_nth_tick(schedule_period_ticks, function(tickEvent)
+    local new_schedule_period_ticks = settings.global["schedule-period-ticks"].value
+
+    -- remove handler for previous tick schedule (on_nth_tick registers a handler for each tick count, so you must unset them)
+    if global.schedule_period_ticks then
+        script.on_nth_tick(global.schedule_period_ticks, Nil)
+    end
+    script.on_nth_tick(new_schedule_period_ticks, function(tickEvent)
         check_monitored_players()
     end)
-
-    for _, p in pairs(game.players) do
-        register_player(p.index)
-    end
+    global.schedule_period_ticks = new_schedule_period_ticks
 end
 
 script.on_event(defines.events.on_runtime_mod_setting_changed, function(event)
@@ -436,7 +440,9 @@ script.on_event(defines.events.on_research_finished, function(event)
         global.forces_researched[event.research.force.index] = true
         schedule_scanning()
         for _, player in pairs(event.research.force.players) do
-            show_trim_start_alert(player)
+            if register_player(p.index) then
+                show_trim_start_alert(player)
+            end
         end
     end
 end)
