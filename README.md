@@ -28,10 +28,10 @@ Detailed Operation
 -------
 
 1. Determine whether the player is eligible for trimming (are they a real player with a character and an inventory? do they have the logistics tech?, is their inventory > 60% full?)
-2. Merge item slots to the left-most slots (in case user has disabled "Interface: Always keep Main Inventory sorted" setting).
-3. For each item, determine: which slots it occupies; any "middle-click" filter slots; logistics request minimum if any; damaged items slots. Btw, non-stacking items (blueprints, remotes, etc) are completely left alone.
+2. Merge incompletely filled item slots to the left-most slots (in case user has disabled "Interface: Always keep Main Inventory sorted" setting). Basic tidy-up.
+3. For each item, determine: which slots it occupies; any "middle-click" filter slots; logistics request minimum if any; damaged items slots. Non-stacking items (blueprints, remotes, etc) are completely left alone.
 4. There's no point emptying slots that go below the request minimum, or the capacity off filter slots, so determine how many slots we _could_ clear. Any slots above that number are considered "excess" slots, and are candidates for clearing. There's no point trimming non-excess slots, because bots will just refill them. Plus, the minimum number of stacks is clamped to at least 1, so it won't clean you out completely (though, see Tricks below).
-5. Assign an "importance" score to each excess slot based on the item's characteristics, where you want to get rid of low importance items. Is it:
+5. Iterate all items: assign an "importance" score to each excess slot based on the item's characteristics, where the goal is to clear away low importance items. Is it:
     * partially filled, as a proportion of full stack-size? More full == more important.
     * a raw/intermediate item? such items are considered low importance.
     * placeable? items that can be placed (like assembly machines or rail) are considered more important.
