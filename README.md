@@ -19,7 +19,7 @@ Features
 Rationale
 ------
 
-I keep finding, from around mid-game, that my inventory is always sort of full, and that many slots are occupied with low value items. I can set logistics minimums to get rid of things, but they feel like a heavy-handed and broad-brush solution. I don't mind having 100 Inserters (2 stacks) but I do mind having 53 - also 2 stacks - and then finding I'm out of space. This mod aims to fix that, whilst being more sensitive to circumstances.
+I keep finding, from around mid-game, that my inventory is always sort of full, and that many slots are occupied with low value items. I can set logistics maximums to get rid of things, but they feel like a heavy-handed and broad-brush solution. I don't mind having 100 Inserters (2 stacks) but I do mind having 53 - also 2 stacks - and then finding I'm out of space. This mod aims to fix that, whilst being more sensitive to circumstances.
 
 Trimming is only meaningful in a world where you have logistics and auto-trash, so it is assumed that you are at a point in the game where carrying small items of stuff isn't so critical. Much of your inventory content is likely to be under automated configuration anyway. The aim of trimming should be to deal with the annoyance of never having much space and pruning the junk.
 
