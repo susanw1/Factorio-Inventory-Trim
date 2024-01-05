@@ -440,7 +440,7 @@ script.on_event(defines.events.on_research_finished, function(event)
         global.forces_researched[event.research.force.index] = true
         schedule_scanning()
         for _, player in pairs(event.research.force.players) do
-            if register_player(p.index) then
+            if register_player(player.index) then
                 show_trim_start_alert(player)
             end
         end
