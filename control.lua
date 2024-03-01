@@ -147,10 +147,10 @@ local function compactStacks(slots_to_check, exclusions, stacks, stack_size)
     return count
 end
 
--- Packs as many stacks from the slots_to_check into the indicated slot.
+-- Utility function for tidy_stacks: packs as many stacks from the slots_to_check into the indicated slot.
 --
--- @param slot_to_fill_index index of the slot to be filled
--- @param slots_to_check the set of stacks to scan (right-to-left). Note, any stacks that are fully transferred are removed from the set1
+-- @param slot_to_fill_index index in 'stacks' of the slot to be filled
+-- @param slots_to_check the set of stacks to scan, checked in right-to-left order. Note, any stacks that are fully transferred are removed from the set1
 -- @param filter_slots the set of filter slots, ignore any filter slot with a lower index
 -- @param stacks the stacks occupied by this item's stacks
 local function compactStacksToSlot(slot_to_fill_index, slots_to_check, filter_slots, stacks)
@@ -170,6 +170,8 @@ local function compactStacksToSlot(slot_to_fill_index, slots_to_check, filter_sl
     return count
 end
 
+-- Performs a tidy-up of all the slots in main inventory, merging incomplete stacks to the left to free up space. This is essentially redundant if you have the
+-- "Always keep Main Inventory sorted" enabled; however, this merges stacks without sorting or re-ordering.
 local function tidy_stacks(item_stacks)
     for item_name, details in pairs(item_stacks) do
         -- merge filter slots

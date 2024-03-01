@@ -5,7 +5,6 @@ local tech = {
         name = 'inventory-trim-tech',
         type = 'technology',
 
-        --icon = '__Inventory-Trim__/sprite/itrim-technology.png',
         icon_size = 128,
         icons = {
             { icon = "__base__/graphics/technology/logistic-robotics.png", icon_size = 256, icon_mipmaps = 4, shift = { 15, 20 }, scale = 0.65 },
