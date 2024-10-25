@@ -1,10 +1,10 @@
 {
   "name": "Inventory-Trim",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "title": "Inventory Trim",
   "author": "SusanW",
   "license": "MIT",
-  "factorio_version": "1.1",
+  "factorio_version": "2.0",
   "dependencies": [
     "base >= 1.1"
   ],
