@@ -3,14 +3,14 @@
 -- registers a new player for inventory monitoring, if player a) not already registered, b) exists, c) is a character, d) has a main inventory.
 -- @returns true if player added; false otherwise
 local function register_player(player_index)
-    if not global.player_info then
-        global.player_info = {}
+    if not storage.player_info then
+        storage.player_info = {}
     end
-    if not global.forces_researched then
-        global.forces_researched = {}
+    if not storage.forces_researched then
+        storage.forces_researched = {}
     end
 
-    if global.player_info[player_index] then
+    if storage.player_info[player_index] then
         return false        -- already registered
     end
 
@@ -19,18 +19,18 @@ local function register_player(player_index)
         return false        -- invalid candidate for trimming
     end
 
-    if not global.forces_researched[p.force.index] then
+    if not storage.forces_researched[p.force.index] then
         return false        -- player's force hasn't researched relevant techs
     end
 
-    global.player_info[player_index] = { player = p }
+    storage.player_info[player_index] = { player = p }
     return true
 end
 
 -- De-registers a player from inventory monitoring. They might have left, or we can't find anything more to do.
 -- We'll re-register them if their inventory changes.
 local function deregister_player(player_index)
-    global.player_info[player_index] = nil
+    storage.player_info[player_index] = nil
 end
 
 local function find_player_logistic_requests(player)
@@ -378,16 +378,16 @@ local function process_player(player_info)
 end
 
 local function check_monitored_players()
-    if global.player_info then
-        for _, player_info in pairs(global.player_info) do
+    if storage.player_info then
+        for _, player_info in pairs(storage.player_info) do
             process_player(player_info)
         end
     end
 end
 
 script.on_init(function()
-    global.player_info = {}
-    global.forces_researched = {}
+    storage.player_info = {}
+    storage.forces_researched = {}
 end)
 
 script.on_event(defines.events.on_player_joined_game, function(event)
@@ -408,8 +408,8 @@ end
 
 script.on_nth_tick(settings.global["schedule-period-ticks"].value, function(tickEvent)
     check_monitored_players()
-    if not global.schedule_period_ticks then
-        global.schedule_period_ticks = settings.global["schedule-period-ticks"].value
+    if not storage.schedule_period_ticks then
+        storage.schedule_period_ticks = settings.global["schedule-period-ticks"].value
     end
 end)
 
@@ -417,20 +417,20 @@ local function schedule_scanning()
     local new_schedule_period_ticks = settings.global["schedule-period-ticks"].value
 
     -- remove handler for previous tick schedule (on_nth_tick registers a handler for each tick count, so you must unset them)
-    if global.schedule_period_ticks then
-        script.on_nth_tick(global.schedule_period_ticks, Nil)
+    if storage.schedule_period_ticks then
+        script.on_nth_tick(storage.schedule_period_ticks, Nil)
     end
     script.on_nth_tick(new_schedule_period_ticks, function(tickEvent)
         check_monitored_players()
     end)
-    global.schedule_period_ticks = new_schedule_period_ticks
+    storage.schedule_period_ticks = new_schedule_period_ticks
 end
 
 script.on_event(defines.events.on_runtime_mod_setting_changed, function(event)
     if event.setting == "schedule-period-ticks" then
         schedule_scanning()
 
-        for _, player_info in pairs(global.player_info) do
+        for _, player_info in pairs(storage.player_info) do
             show_trim_start_alert(player_info.player)
         end
     end
@@ -439,7 +439,7 @@ end)
 script.on_event(defines.events.on_research_finished, function(event)
     if event.research.name == "inventory-trim-tech"
             or (not settings.startup["technology-item-required"].value and event.research.name == "logistic-robotics") then
-        global.forces_researched[event.research.force.index] = true
+        storage.forces_researched[event.research.force.index] = true
         schedule_scanning()
         for _, player in pairs(event.research.force.players) do
             if register_player(player.index) then
