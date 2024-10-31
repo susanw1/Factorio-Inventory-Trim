@@ -33,24 +33,61 @@ local function deregister_player(player_index)
     storage.player_info[player_index] = nil
 end
 
-local function find_player_logistic_requests(player)
+
+-- if both Nil, then Nil; else a+b (treating Nil = 0)
+local function minsum(a, b)
+    return (a and b) and (a + b) or a or b
+end
+
+-- if both Nil, then Nil; else a+b (treating Nil = Inf)
+local function maxsum(a, b)
+    return (a and b) and (a + b) or nil
+end
+
+-- Combine 2 filter-defs, by summing the min/max fields if present. Only f2 may be Nil.
+local function combine_filter_defs(f1, f2)
+    if f2 then
+        f1.min = minsum(f1.min, f2.min)
+        f1.max = maxsum(f1.max, f2.max)
+    end
+    return f1
+end
+
+-- Builds a table of player's logistic request slots. (F1.1: LogisticParameters; F2.0: "filterDef" objects)
+-- @param   playerLogisticPoint   LuaLogisticPoint for this player
+-- @return table of {item_name, quality_id, min, max} objects, keyed by prototype.item_name (AND quality?)
+local function find_player_logistic_requests(playerLogisticPoint)
     local requests = {}
-    for slot_index = 1, player.character.request_slot_count do
-        local slot = player.get_personal_logistic_slot(slot_index)
-        if slot.name then
-            requests[slot.name] = slot
+
+    for sectionIdx = 1, playerLogisticPoint.sections_count do
+        local section = playerLogisticPoint.sections[sectionIdx]    -- LuaLogisticSection
+        if section.active then
+            for filterIdx = 1, section.filters_count do
+                local f = section.filters[filterIdx]                -- LogisticFilter
+                if f.value then
+                    -- must aggregate over potentially multiple sections, and I think differentiate on quality (TODO)
+                    local filterDef = { item_name = f.value.name,
+                                        quality_id = f.value.quality,
+                                        min = f.min,
+                                        max = f.max }
+                    requests[filterDef.item_name] = combine_filter_defs(filterDef, requests[filterDef.item_name])
+                end
+            end
         end
     end
     return requests
 end
 
--- iterates the supplied inventory and creates a map by item, identifying their slots by index and breaking them down by a) filtered b) healthy vs unhealthy
+-- Iterates the supplied inventory and creates a map by item, identifying their slots by index and breaking them down by a) filtered b) healthy vs unhealthy
+-- @param   main_inv   the player's main inventory
+-- @param   requests   the current logistic requests from find_player_logistic_requests, keyed by item_name
+-- @return the main inventory stack details, keyed by item-name (FIXME quality?)
 local function gather_inventory_details_by_item(main_inv, requests)
     local item_stacks = {}
 
     for slot_index = 1, #main_inv do
-        local stack = main_inv[slot_index]
-        local filter = main_inv.get_filter(slot_index)
+        local stack = main_inv[slot_index]              -- LuaItemStack
+        local filter = main_inv.get_filter(slot_index)  -- ItemFilter
 
         if (stack and stack.valid_for_read) or filter then
             local item_name, item_count
@@ -62,7 +99,7 @@ local function gather_inventory_details_by_item(main_inv, requests)
                 item_count = 0
             end
 
-            local item = game.item_prototypes[item_name]
+            local item = prototypes.item[item_name]
             if item and item.stackable then
                 local item_stack_details = item_stacks[item_name]
                 if not item_stack_details then
@@ -127,6 +164,16 @@ local function reversePairs(t)
     end)
 end
 
+
+-- Utility function for tidy_stacks: packs as many stacks from the slots_to_check into the indicated slot.
+-- eg         compactStacks(details.healthy_slots, details.filter_slots, details.stacks_by_index, details.item.stack_size)
+--
+-- @param slots_to_check        the set of 'stacks' slot-indexes to scan, checked in right-to-left order. Note, any stacks that are fully transferred are removed from the set.
+-- @param exclusions            stack ids to exclude from scan/compaction, eg filter slots
+-- @param stacks                all inventory's LuaItemStacks occupied by this type of item
+-- @param stack_size            the stack_size for this type of item
+-- @returns number of stacks removed as a result of compaction
+-- FIXME: "quality"?
 local function compactStacks(slots_to_check, exclusions, stacks, stack_size)
     local count = 0
     for i, _ in pairs(slots_to_check) do
@@ -147,17 +194,19 @@ local function compactStacks(slots_to_check, exclusions, stacks, stack_size)
     return count
 end
 
--- Utility function for tidy_stacks: packs as many stacks from the slots_to_check into the indicated slot.
+-- Utility function for tidy_stacks: packs as many stacks from the slots_to_check into the indicated slot, using LuaItemStack.transfer_stack.
+-- eg compactStacksToSlot(filter_index, details.healthy_slots, details.filter_slots, details.stacks_by_index)
 --
--- @param slot_to_fill_index index in 'stacks' of the slot to be filled
--- @param slots_to_check the set of stacks to scan, checked in right-to-left order. Note, any stacks that are fully transferred are removed from the set1
--- @param filter_slots the set of filter slots, ignore any filter slot with a lower index
--- @param stacks the stacks occupied by this item's stacks
+-- @param slot_to_fill_index    index in 'stacks' of the specific slot to be filled
+-- @param slots_to_check        the set of 'stacks' slot-indexes to scan, checked in right-to-left order. Note, any stacks that are fully transferred are removed from the set.
+-- @param filter_slots          the set of filter 'stacks' slot-indexes, skipping any filter slot with a lower index than the 'slot_to_fill_index'
+-- @param stacks                the inventory's LuaItemStacks containing this item type
+-- @returns number of stacks removed as a result of compaction
 local function compactStacksToSlot(slot_to_fill_index, slots_to_check, filter_slots, stacks)
     local count = 0
     for i, _ in reversePairs(slots_to_check) do
         if i ~= slot_to_fill_index
-                and (not filter_slots[i] or slot_to_fill_index < i) then
+                and (not filter_slots[i] or i > slot_to_fill_index) then
             if stacks[slot_to_fill_index].transfer_stack(stacks[i]) then
                 -- i'th slot has been fully transferred, so forget about it
                 slots_to_check[i] = Nil
@@ -171,7 +220,7 @@ local function compactStacksToSlot(slot_to_fill_index, slots_to_check, filter_sl
 end
 
 -- Performs a tidy-up of all the slots in main inventory, merging incomplete stacks to the left to free up space. This is essentially redundant if you have the
--- "Always keep Main Inventory sorted" enabled; however, this merges stacks without sorting or re-ordering.
+-- "Always keep Main Inventory sorted" enabled; however, this merges stacks without sorting or re-ordering. FIXME: "quality"?
 local function tidy_stacks(item_stacks)
     for item_name, details in pairs(item_stacks) do
         -- merge filter slots
@@ -211,6 +260,7 @@ local function candidateOrder(t, a, b)
     return t[a].importance < t[b].importance
 end
 
+-- Builds a list of slot "candidates" for trimming
 local function determine_candidate_actions(main_inv, item_stacks, player_settings)
     local stack_fullness_importance_boost = player_settings["stack-fullness-importance-boost"].value
 
@@ -257,7 +307,7 @@ local function determine_candidate_actions(main_inv, item_stacks, player_setting
 
         -- placeable items are more important than non-placeable, and raw materials and intermediates are much less important
         -- and logistic req_min implies player has expressed intent to maintain minimum, so less important to have excess. Min itself captured by min_stacks_to_keep.
-        local subgroupBias = ((item.subgroup.name == "intermediate-product" or item.subgroup.name == "raw-material") and 0 or 2)
+        local subgroupBias = ((item.group.name == "intermediate-products" or item.subgroup.name == "raw-resource") and 0 or 2)
                 + (item.place_result and 1 or 0)
                 + (details.req_min and 0 or 2)
 
@@ -289,19 +339,21 @@ local function determine_candidate_actions(main_inv, item_stacks, player_setting
     return candidates
 end
 
+-- This is the main entry point for processing a specific player.
 local function process_player(player_info)
     local p = player_info.player
     local player_settings = settings.get_player_settings(p.index)
 
     local main_inv = p.get_main_inventory()
-    local logistics_inv = p.get_inventory(defines.inventory.character_trash)
+    local logistics_trash = p.get_inventory(defines.inventory.character_trash)
 
-    if not main_inv or not logistics_inv then
+    if not main_inv or not logistics_trash then
         deregister_player(p.index)
         return
     end
 
-    if not player_settings["trim-enabled"].value or not p.character_personal_logistic_requests_enabled then
+    -- if the player has disabled the trim, or has switched off logistics requests (get_requester_point=>LuaLogisticPoint)
+    if not player_settings["trim-enabled"].value or not p.character.get_requester_point().enabled then
         return
     end
 
@@ -315,10 +367,13 @@ local function process_player(player_info)
     local notification_flying_text_enabled = player_settings["notification-flying-text-enabled"].value
 
     -- load the personal logistic request setup
-    local requests = find_player_logistic_requests(p)
+    local requests = find_player_logistic_requests(p.character.get_requester_point())
+    --p.print("transport-belt: " .. serpent.block(requests["transport-belt"]))
 
-    -- Gather main-inventory info, mapped by item-name.
+    -- Gather main-inventory info, mapped by item-name. FIXME: "quality"?
     local item_stacks = gather_inventory_details_by_item(main_inv, requests);
+    --p.print("stone: " .. serpent.block(item_stacks["stone"]))
+
     tidy_stacks(item_stacks)
 
     local candidates = determine_candidate_actions(main_inv, item_stacks, player_settings)
@@ -344,7 +399,7 @@ local function process_player(player_info)
 
         if removal_candidate.importance < aggressiveness_importance_threshold then
             local s = removal_candidate.stack_to_move
-            local items_moved = logistics_inv.insert(s)
+            local items_moved = logistics_trash.insert(s)
             if items_moved == s.count then
                 s.clear()
                 free_slot_count = free_slot_count + 1
@@ -377,6 +432,7 @@ local function process_player(player_info)
     end
 end
 
+-- This is the principle scan across registered players
 local function check_monitored_players()
     if storage.player_info then
         for _, player_info in pairs(storage.player_info) do
@@ -385,8 +441,15 @@ local function check_monitored_players()
     end
 end
 
+----------------------------
+-- Event Handler definitions
+----------------------------
+
 script.on_init(function()
+    -- contains an entry for every registered player: only reg'd players get inventory scans.
+    -- indexed by player_index. { player=game.get_player(idx) }
     storage.player_info = {}
+    -- indexed by 'force.index',gives true or false
     storage.forces_researched = {}
 end)
 
@@ -427,6 +490,7 @@ local function schedule_scanning()
 end
 
 script.on_event(defines.events.on_runtime_mod_setting_changed, function(event)
+    -- note: schedule-period-ticks is a Map setting, not a Player setting: it affects everyone.
     if event.setting == "schedule-period-ticks" then
         schedule_scanning()
 
@@ -436,6 +500,7 @@ script.on_event(defines.events.on_runtime_mod_setting_changed, function(event)
     end
 end)
 
+-- Trimming is enabled to all players in a Force, once relevant research is done.
 script.on_event(defines.events.on_research_finished, function(event)
     if event.research.name == "inventory-trim-tech"
             or (not settings.startup["technology-item-required"].value and event.research.name == "logistic-robotics") then
