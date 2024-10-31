@@ -3,7 +3,7 @@ Inventory Trim
 
 You know when your main inventory is jammed with slots containing small numbers of surplus items? You've picked up few pieces of belt and a chest, and now you've got slots containing 2 extra Inserters, 6 pieces of damaged Wall, 9 spare pieces of Iron Plate and ... well, junk.
 
-This mod enables *inventory trimming*: your main inventory is scanned periodically to see if there are slots that are being used inefficiently, and throws their contents into the logistics trash. Hurrah, no more clicky-clicky to get rid of the rubbish!
+This mod enables *inventory trimming*: your main inventory is scanned periodically to see if there are slots that are being used inefficiently, and throws their contents into the logistics trash. Hurrah, no more clicky-clicky to get rid of the clutter!
 
 Features
 --------
