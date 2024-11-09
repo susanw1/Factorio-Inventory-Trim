@@ -55,7 +55,7 @@ end
 
 -- Builds a table of player's logistic request slots. (F1.1: LogisticParameters; F2.0: "filterDef" objects)
 -- @param   playerLogisticPoint   LuaLogisticPoint for this player
--- @return table of {item_name, quality_id, min, max} objects, keyed by prototype.item_name (AND quality?)
+-- @return table of {item_name, min, max} objects, keyed by prototype.item_name
 local function find_player_logistic_requests(playerLogisticPoint)
     local requests = {}
 
@@ -64,10 +64,11 @@ local function find_player_logistic_requests(playerLogisticPoint)
         if section.active then
             for filterIdx = 1, section.filters_count do
                 local f = section.filters[filterIdx]                -- LogisticFilter
-                if f.value then
-                    -- must aggregate over potentially multiple sections, and I think differentiate on quality (TODO)
+
+                -- f.value.quality: the prototype name of the signal's quality. nil for any quality
+                if f.value and (not f.value.quality or f.value.quality == "normal") then
+                    -- must aggregate over potentially multiple sections, ignoring non-normal quality items
                     local filterDef = { item_name = f.value.name,
-                                        quality_id = f.value.quality,
                                         min = f.min,
                                         max = f.max }
                     requests[filterDef.item_name] = combine_filter_defs(filterDef, requests[filterDef.item_name])
@@ -78,10 +79,12 @@ local function find_player_logistic_requests(playerLogisticPoint)
     return requests
 end
 
--- Iterates the supplied inventory and creates a map by item, identifying their slots by index and breaking them down by a) filtered b) healthy vs unhealthy
+-- Iterates the supplied inventory and creates a map by item, identifying their slots by index and breaking them down by a) filtered b) healthy vs unhealthy.
+-- Items with non-normal quality are skipped.
+
 -- @param   main_inv   the player's main inventory
 -- @param   requests   the current logistic requests from find_player_logistic_requests, keyed by item_name
--- @return the main inventory stack details, keyed by item-name (FIXME quality?)
+-- @return the main inventory stack details, keyed by item-name
 local function gather_inventory_details_by_item(main_inv, requests)
     local item_stacks = {}
 
@@ -100,7 +103,8 @@ local function gather_inventory_details_by_item(main_inv, requests)
             end
 
             local item = prototypes.item[item_name]
-            if item and item.stackable then
+
+            if item and item.stackable and (not stack.quality or stack.quality.name == "normal") then
                 local item_stack_details = item_stacks[item_name]
                 if not item_stack_details then
                     local req = requests[item_name]
@@ -173,7 +177,6 @@ end
 -- @param stacks                all inventory's LuaItemStacks occupied by this type of item
 -- @param stack_size            the stack_size for this type of item
 -- @returns number of stacks removed as a result of compaction
--- FIXME: "quality"?
 local function compactStacks(slots_to_check, exclusions, stacks, stack_size)
     local count = 0
     for i, _ in pairs(slots_to_check) do
@@ -220,7 +223,7 @@ local function compactStacksToSlot(slot_to_fill_index, slots_to_check, filter_sl
 end
 
 -- Performs a tidy-up of all the slots in main inventory, merging incomplete stacks to the left to free up space. This is essentially redundant if you have the
--- "Always keep Main Inventory sorted" enabled; however, this merges stacks without sorting or re-ordering. FIXME: "quality"?
+-- "Always keep Main Inventory sorted" enabled; however, this merges stacks without sorting or re-ordering.
 local function tidy_stacks(item_stacks)
     for item_name, details in pairs(item_stacks) do
         -- merge filter slots
@@ -307,7 +310,7 @@ local function determine_candidate_actions(main_inv, item_stacks, player_setting
 
         -- placeable items are more important than non-placeable, and raw materials and intermediates are much less important
         -- and logistic req_min implies player has expressed intent to maintain minimum, so less important to have excess. Min itself captured by min_stacks_to_keep.
-        local subgroupBias = ((item.group.name == "intermediate-products" or item.subgroup.name == "raw-resource") and 0 or 2)
+        local subgroupBias = ((item.subgroup.name == "intermediate-product" or item.subgroup.name == "raw-resource" or item.subgroup.name == "spawnables") and 0 or 3)
                 + (item.place_result and 1 or 0)
                 + (details.req_min and 0 or 2)
 
@@ -370,7 +373,7 @@ local function process_player(player_info)
     local requests = find_player_logistic_requests(p.character.get_requester_point())
     --p.print("transport-belt: " .. serpent.block(requests["transport-belt"]))
 
-    -- Gather main-inventory info, mapped by item-name. FIXME: "quality"?
+    -- Gather main-inventory info, mapped by item-name.
     local item_stacks = gather_inventory_details_by_item(main_inv, requests);
     --p.print("stone: " .. serpent.block(item_stacks["stone"]))
 
