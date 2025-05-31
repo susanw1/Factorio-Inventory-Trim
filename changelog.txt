@@ -1,4 +1,9 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.2.2
+Date: 2025-05-31
+  Bugfixes:
+    - Flying-text speed reduced after core bugfix (#37)
+---------------------------------------------------------------------------------------------------
 Version: 0.2.1
 Date: 2024-11-09
   Changes:
@@ -7,7 +12,7 @@ Date: 2024-11-09
 Version: 0.2.0
 Date: 2024-10-31
   Changes:
-    - Re-released with updates for Factorio 2.0 compatability
+    - Re-released with updates for Factorio 2.0 compatibility
 ---------------------------------------------------------------------------------------------------
 Version: 0.1.4
 Date: 2024-03-01

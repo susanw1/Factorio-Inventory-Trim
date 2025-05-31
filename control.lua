@@ -427,7 +427,7 @@ local function process_player(player_info)
                 p.create_local_flying_text { text = { "itrim.notification-flying-text", -summary.removed_item_count, summary.item.localised_name, main_inv.get_item_count(summary.item_name) },
                                              position = { p.position.x, p.position.y - count },
                                              time_to_live = 180,
-                                             speed = 40, -- check, this used to be 1, but in 2.0 that's really slow.
+                                             speed = 5,
                                              color = { 128, 128, 192 } }
                 count = count + 1
             end
