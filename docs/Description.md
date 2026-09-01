@@ -3,7 +3,9 @@ Inventory Trim
 
 You know when your main inventory is jammed with slots containing small numbers of surplus items? You've picked up few pieces of belt and a chest, and now you've got slots containing 2 extra Inserters, 6 pieces of damaged Wall, 9 spare pieces of Iron Plate and ... well, junk.
 
-This mod enables *inventory trimming*: your main inventory is scanned periodically to see if there are slots that are being used inefficiently, and throws their contents into the logistics trash. Hurrah, no more clicky-clicky to get rid of the clutter!
+This mod adds the *Inventory Trim* technology: when unlocked, your main inventory is scanned periodically to see if there are slots that are being used inefficiently, and throws their contents into the logistics trash. Hurrah, no more clicky-clicky to get rid of the clutter!
+
+**Updated for Factorio 2.1**
 
 Features
 --------
@@ -21,3 +23,4 @@ I keep finding, from around mid-game, that my inventory is always sort of full, 
 Trimming is only meaningful in a world where you have logistics and auto-trash, so it is assumed that you are at a point in the game where carrying small items of stuff isn't so critical. Much of your inventory content is likely to be under automated configuration anyway. The aim of trimming should be to deal with the annoyance of never having much space and continually having to prune the junk.
 
 See the gallery images above for a "before" and "after" view.
+
